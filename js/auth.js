@@ -16,7 +16,7 @@ const LostMCAuth = {
 
   async signOut() {
     await sb.auth.signOut();
-    window.location.href = "login.html";
+    window.location.href = window.LOSTMC_CONFIG.SITE_URL + "login.html";
   },
 
   // Charge la session + le profil + les rôles depuis Supabase.
@@ -57,11 +57,11 @@ const LostMCAuth = {
   async guardPage(requiredRoles = []) {
     const result = await this.loadCurrentUser();
     if (!result) {
-      window.location.href = "login.html";
+      window.location.href = window.LOSTMC_CONFIG.SITE_URL + "login.html";
       return null;
     }
     if (!this.isMember()) {
-      window.location.href = "login.html?denied=1";
+      window.location.href = window.LOSTMC_CONFIG.SITE_URL + "login.html?denied=1";
       return null;
     }
     if (requiredRoles.length && !this.isTable() && !requiredRoles.some(r => this.hasRole(r))) {
