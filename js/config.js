@@ -8,5 +8,5 @@ window.LOSTMC_CONFIG = {
 
   // Doit correspondre EXACTEMENT à l'URL de ton site GitHub Pages
   // ex: "https://tonpseudo.github.io/lostmc-site/"
-  SITE_URL: "https://rayanemix.github.io/lostmcosv1/",
+  SITE_URL: "https://rayanemix.github.io/lostmc-site/",
 };
