@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rapports — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("rapports", "Rapports");
+  const canWrite = LostMCAuth.hasRole("rapporteur") || LostMCAuth.isTable();
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    ${canWrite ? `
+    <div class="panel">
+      <div class="panel-title"><h2>Rédiger un rapport</h2></div>
+      <form id="form">
+        <label>Titre</label><input id="title" required>
+        <label>Membre concerné (optionnel)</label><input id="concerned">
+        <label>Contenu</label><textarea id="body" rows="4" required></textarea>
+        <div class="form-actions"><button class="btn-primary" type="submit">Envoyer à la Table</button></div>
+      </form>
+    </div>` : `<div class="panel"><p class="perm-note">Seuls les membres avec le rôle Rapporteur (ou la Table) peuvent rédiger un rapport. Tu peux voir ici tes propres rapports.</p></div>`}
+    <div class="panel"><div class="panel-title"><h2>Rapports</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function load() {
+    const { data } = await sb.from("reports").select("*").order("created_at", { ascending: false });
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucun rapport visible.</div>`; return; }
+    el.innerHTML = data.map(r => `
+      <div class="item-row">
+        <div>
+          <div class="t">${r.title} ${r.concerned_member ? `<span class="tag">Concerne: ${r.concerned_member}</span>` : ''}</div>
+          <div class="d" style="white-space:pre-wrap">${r.content}</div>
+          <div class="d">${r.author_name || ''} · ${new Date(r.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+      </div>`).join("");
+  }
+  load();
+
+  if (canWrite) {
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const { error } = await sb.from("reports").insert({
+        title: document.getElementById("title").value,
+        content: document.getElementById("body").value,
+        concerned_member: document.getElementById("concerned").value || null,
+        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+      });
+      if (error) { alert(error.message); return; }
+      e.target.reset();
+    };
+  }
+
+  sb.channel("reports-realtime").on("postgres_changes", { event: "*", schema: "public", table: "reports" }, load).subscribe();
+})();
+</script>
+</body>
+</html>

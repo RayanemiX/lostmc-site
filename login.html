@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connexion — The Lost MC</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="login-screen">
+  <div class="login-box">
+    <div class="login-brand">THE <span>LOST</span> MC</div>
+    <div class="login-sub">Réseau privé — accès réservé aux membres</div>
+    <div class="login-status"><span class="dot"></span>Connexion sécurisée via Discord</div>
+    <button class="discord-btn" id="discordLoginBtn">Se connecter avec Discord</button>
+    <div id="deniedMsg" class="login-denied hidden">
+      Accès refusé. Ton compte Discord ne possède pas le rôle <strong>TheLostMC</strong>. Contacte la Table si tu penses qu'il s'agit d'une erreur.
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/auth.js"></script>
+<script>
+(async () => {
+  if (new URLSearchParams(location.search).get("denied") === "1") {
+    document.getElementById("deniedMsg").classList.remove("hidden");
+  }
+  // Si déjà connecté ET membre, direct vers l'accueil
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    const result = await LostMCAuth.loadCurrentUser();
+    if (result && LostMCAuth.isMember()) { window.location.href = "index.html"; return; }
+  }
+  document.getElementById("discordLoginBtn").onclick = () => LostMCAuth.signInWithDiscord();
+})();
+</script>
+</body>
+</html>

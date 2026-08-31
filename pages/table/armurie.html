@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Armurie — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage(["table"]);
+  if (!result) return;
+  LostMCLayout_render("armurie", "Armurie");
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title"><h2>Ajouter une arme au stock</h2></div>
+        <form id="newWeaponForm">
+          <label>Nom</label><input id="wName" required>
+          <label>Catégorie</label><input id="wCat" placeholder="ex: poing, longue, munitions...">
+          <div class="form-row">
+            <div><label>Quantité initiale</label><input id="wQty" type="number" min="0" value="0"></div>
+            <div><label>Prix unitaire (optionnel)</label><input id="wPrice" type="number" min="0" step="0.01"></div>
+          </div>
+          <div class="form-actions"><button class="btn-primary" type="submit">Créer</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-title"><h2>Mouvement de stock</h2></div>
+        <form id="txForm">
+          <label>Arme</label><select id="txWeapon"></select>
+          <div class="form-row">
+            <div><label>Type</label><select id="txType"><option value="entree">Entrée</option><option value="sortie">Sortie</option><option value="vente">Vente</option></select></div>
+            <div><label>Quantité</label><input id="txQty" type="number" min="1" step="1" required></div>
+          </div>
+          <label>Montant (si vente)</label><input id="txAmount" type="number" min="0" step="0.01">
+          <label>Note</label><input id="txNote">
+          <div class="form-actions"><button class="btn-primary" type="submit">Enregistrer</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Stock d'armes</h2></div>
+      <table><thead><tr><th>Arme</th><th>Catégorie</th><th>Quantité</th><th>Prix unitaire</th><th></th></tr></thead><tbody id="stockBody"><tr><td colspan="5" class="empty">Chargement…</td></tr></tbody></table>
+    </div>
+    <div class="panel"><div class="panel-title"><h2>Historique des mouvements</h2></div><div id="txList"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function loadWeapons() {
+    const { data } = await sb.from("armory_weapons").select("*").order("name");
+    const body = document.getElementById("stockBody");
+    if (!data || !data.length) { body.innerHTML = `<tr><td colspan="5" class="empty">Aucune arme enregistrée.</td></tr>`; }
+    else body.innerHTML = data.map(w => `<tr>
+      <td>${w.name}</td><td>${w.category || '—'}</td><td>${w.quantity}</td><td>${w.unit_price != null ? Number(w.unit_price).toLocaleString('fr-FR') : '—'}</td>
+      <td><button class="btn-sm btn-danger" data-id="${w.id}">Suppr.</button></td>
+    </tr>`).join("");
+    body.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer cette arme du stock ?")) return;
+      await sb.from("armory_weapons").delete().eq("id", b.dataset.id);
+    });
+
+    const sel = document.getElementById("txWeapon");
+    if (sel) sel.innerHTML = (data || []).map(w => `<option value="${w.id}">${w.name}</option>`).join("");
+    return data || [];
+  }
+
+  async function loadTx() {
+    const { data } = await sb.from("armory_transactions").select("*, armory_weapons(name)").order("created_at", { ascending: false }).limit(25);
+    const el = document.getElementById("txList");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucun mouvement.</div>`; return; }
+    el.innerHTML = data.map(t => `
+      <div class="item-row">
+        <div>
+          <div class="t">${t.armory_weapons?.name || '—'} <span class="tag ${t.type==='sortie'||t.type==='vente'?'out':'in'}">${t.type}</span></div>
+          <div class="d">Qté: ${t.quantity}${t.amount ? ' · Montant: ' + Number(t.amount).toLocaleString('fr-FR') : ''} ${t.note ? '· ' + t.note : ''}</div>
+          <div class="d">${t.author_name || ''} · ${new Date(t.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  loadWeapons(); loadTx();
+
+  document.getElementById("newWeaponForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("armory_weapons").insert({
+      name: document.getElementById("wName").value,
+      category: document.getElementById("wCat").value || null,
+      quantity: parseInt(document.getElementById("wQty").value || "0"),
+      unit_price: document.getElementById("wPrice").value ? parseFloat(document.getElementById("wPrice").value) : null,
+      created_by: LostMCAuth.profile.id,
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset(); loadWeapons();
+  };
+
+  document.getElementById("txForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const weaponId = document.getElementById("txWeapon").value;
+    if (!weaponId) { alert("Ajoute d'abord une arme."); return; }
+    const type = document.getElementById("txType").value;
+    const qty = parseInt(document.getElementById("txQty").value);
+    const amount = document.getElementById("txAmount").value ? parseFloat(document.getElementById("txAmount").value) : null;
+
+    const { error: txErr } = await sb.from("armory_transactions").insert({
+      weapon_id: weaponId, type, quantity: qty, amount,
+      note: document.getElementById("txNote").value || null,
+      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+    });
+    if (txErr) { alert(txErr.message); return; }
+
+    const { data: w } = await sb.from("armory_weapons").select("quantity").eq("id", weaponId).single();
+    const delta = type === "entree" ? qty : -qty;
+    await sb.from("armory_weapons").update({ quantity: (w?.quantity || 0) + delta }).eq("id", weaponId);
+
+    e.target.reset(); loadWeapons(); loadTx();
+  };
+
+  sb.channel("armory-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "armory_weapons" }, loadWeapons)
+    .on("postgres_changes", { event: "*", schema: "public", table: "armory_transactions" }, loadTx)
+    .subscribe();
+})();
+</script>
+</body>
+</html>

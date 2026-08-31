@@ -1,0 +1,14 @@
+{
+  "name": "lostmc-discord-bot",
+  "version": "1.0.0",
+  "description": "Synchronise les rôles Discord et les annonces vers Supabase pour l'intranet The Lost MC",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5"
+  }
+}

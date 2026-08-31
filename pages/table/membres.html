@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liste des membres — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage(["table"]);
+  if (!result) return;
+  LostMCLayout_render("membres", "Liste des membres");
+
+  const content = document.getElementById("content");
+  content.innerHTML = `<div class="panel"><div class="panel-title"><h2>Membres</h2><span class="meta" id="count"></span></div>
+    <table><thead><tr><th>Membre</th><th>Discord ID</th><th>Rôles</th><th>Fiche</th></tr></thead><tbody id="body"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody></table></div>`;
+
+  async function load() {
+    const { data: profiles } = await sb.from("profiles").select("*").order("username");
+    const { data: roles } = await sb.from("member_roles").select("*");
+    const body = document.getElementById("body");
+    if (!profiles || !profiles.length) { body.innerHTML = `<tr><td colspan="4" class="empty">Aucun membre synchronisé pour l'instant.</td></tr>`; return; }
+    document.getElementById("count").textContent = profiles.length + " membres";
+    body.innerHTML = profiles.map(p => {
+      const r = (roles || []).filter(x => x.profile_id === p.id).map(x => `<span class="tag">${x.role_key}</span>`).join(" ");
+      return `<tr><td>${p.username}</td><td>${p.discord_id}</td><td>${r || '<span class="empty">aucun</span>'}</td>
+        <td><a href="dossier-membre.html?profile=${p.id}&name=${encodeURIComponent(p.username)}">Voir dossier</a></td></tr>`;
+    }).join("");
+  }
+  load();
+
+  sb.channel("membres-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
+    .on("postgres_changes", { event: "*", schema: "public", table: "member_roles" }, load)
+    .subscribe();
+})();
+</script>
+</body>
+</html>

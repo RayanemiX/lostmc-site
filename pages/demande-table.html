@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demande Table — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("demande-table", "Demande Table");
+  const isTable = LostMCAuth.isTable();
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-title"><h2>Nouvelle demande</h2></div>
+      <form id="form">
+        <label>Sujet</label><input id="title" required>
+        <label>Détail de la demande</label><textarea id="body" rows="4" required></textarea>
+        <div class="form-actions"><button class="btn-primary" type="submit">Envoyer</button></div>
+      </form>
+    </div>
+    <div class="panel"><div class="panel-title"><h2>${isTable ? 'Toutes les demandes' : 'Mes demandes'}</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function load() {
+    const { data } = await sb.from("table_requests").select("*").order("created_at", { ascending: false });
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune demande.</div>`; return; }
+    el.innerHTML = data.map(r => `
+      <div class="item-row">
+        <div>
+          <div class="t">${r.title} <span class="tag ${r.status==='acceptee'?'in':r.status==='refusee'?'out':''}">${r.status.replace('_',' ')}</span></div>
+          <div class="d" style="white-space:pre-wrap">${r.content}</div>
+          <div class="d">${r.author_name || ''} · ${new Date(r.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+        ${isTable && r.status === 'en_attente' ? `
+          <div style="display:flex; gap:6px">
+            <button class="btn-sm" data-act="acceptee" data-id="${r.id}">Accepter</button>
+            <button class="btn-sm btn-danger" data-act="refusee" data-id="${r.id}">Refuser</button>
+          </div>` : ""}
+      </div>`).join("");
+    el.querySelectorAll("button[data-act]").forEach(b => b.onclick = async () => {
+      await sb.from("table_requests").update({ status: b.dataset.act, handled_by: LostMCAuth.profile.id }).eq("id", b.dataset.id);
+    });
+  }
+  load();
+
+  document.getElementById("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("table_requests").insert({
+      title: document.getElementById("title").value,
+      content: document.getElementById("body").value,
+      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset();
+  };
+
+  sb.channel("requests-realtime").on("postgres_changes", { event: "*", schema: "public", table: "table_requests" }, load).subscribe();
+})();
+</script>
+</body>
+</html>

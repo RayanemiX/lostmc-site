@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paramètres — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage(["table"]);
+  if (!result) return;
+  LostMCLayout_render("parametres", "Paramètres");
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-title"><h2>Créer un rôle</h2></div>
+      <p class="perm-note">Un rôle créé ici doit être relié à l'ID du rôle Discord correspondant pour que la synchro automatique fonctionne (le bot Discord s'en sert pour savoir quel rôle logique attribuer).</p>
+      <form id="roleForm">
+        <div class="form-row">
+          <div><label>Clé technique (sans espace)</label><input id="rKey" placeholder="ex: tresorier" required></div>
+          <div><label>Nom affiché</label><input id="rLabel" placeholder="ex: Trésorier" required></div>
+        </div>
+        <div class="form-row">
+          <div><label>ID du rôle Discord</label><input id="rDiscordId" placeholder="ex: 123456789012345678"></div>
+          <div><label>Couleur</label><input id="rColor" type="color" value="#8a2418"></div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" type="submit">Créer le rôle</button></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Rôles existants</h2></div>
+      <table><thead><tr><th>Clé</th><th>Nom</th><th>ID Discord</th><th></th></tr></thead><tbody id="roleBody"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody></table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Attribuer un rôle manuellement</h2></div>
+      <p class="perm-note">Normalement la synchro se fait automatiquement depuis Discord via le bot. Ceci sert de secours / correction manuelle.</p>
+      <form id="assignForm">
+        <label>Membre</label><select id="aMember"></select>
+        <label>Rôle</label><select id="aRole"></select>
+        <div class="form-actions"><button class="btn-primary" type="submit">Attribuer</button></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Quotas (affichés sur l'accueil)</h2></div>
+      <form id="quotaForm">
+        <div class="form-row">
+          <div><label>Grade</label><input id="qGrade" required></div>
+        </div>
+        <label>Description du quota</label><textarea id="qDesc" rows="2" required></textarea>
+        <div class="form-actions"><button class="btn-primary" type="submit">Ajouter</button></div>
+      </form>
+      <div id="quotaList" style="margin-top:12px"></div>
+    </div>
+  `;
+
+  async function loadRoles() {
+    const { data } = await sb.from("role_definitions").select("*").order("label");
+    const body = document.getElementById("roleBody");
+    body.innerHTML = (data || []).map(r => `<tr>
+      <td>${r.key}</td><td>${r.label}</td><td>${r.discord_role_id || '<span class="empty">non lié</span>'}</td>
+      <td><button class="btn-sm btn-danger" data-id="${r.key}">Suppr.</button></td>
+    </tr>`).join("") || `<tr><td colspan="4" class="empty">Aucun rôle.</td></tr>`;
+    body.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer ce rôle ?")) return;
+      await sb.from("role_definitions").delete().eq("key", b.dataset.id);
+      loadRoles(); loadRoleSelect();
+    });
+
+    const sel = document.getElementById("aRole");
+    if (sel) sel.innerHTML = (data || []).map(r => `<option value="${r.key}">${r.label}</option>`).join("");
+  }
+
+  async function loadMembers() {
+    const { data } = await sb.from("profiles").select("*").order("username");
+    const sel = document.getElementById("aMember");
+    if (sel) sel.innerHTML = (data || []).map(p => `<option value="${p.id}">${p.username}</option>`).join("");
+  }
+
+  async function loadQuotas() {
+    const { data } = await sb.from("quotas").select("*").order("grade_label");
+    const el = document.getElementById("quotaList");
+    el.innerHTML = (data || []).map(q => `
+      <div class="item-row">
+        <div><div class="t">${q.grade_label}</div><div class="d">${q.description}</div></div>
+        <button class="btn-sm btn-danger" data-id="${q.id}">Suppr.</button>
+      </div>`).join("") || `<div class="empty">Aucun quota.</div>`;
+    el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      await sb.from("quotas").delete().eq("id", b.dataset.id);
+      loadQuotas();
+    });
+  }
+
+  loadRoles(); loadMembers(); loadQuotas();
+
+  document.getElementById("roleForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("role_definitions").insert({
+      key: document.getElementById("rKey").value.trim().toLowerCase().replace(/\s+/g, "_"),
+      label: document.getElementById("rLabel").value,
+      discord_role_id: document.getElementById("rDiscordId").value || null,
+      color: document.getElementById("rColor").value,
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset(); loadRoles();
+  };
+
+  document.getElementById("assignForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("member_roles").insert({
+      profile_id: document.getElementById("aMember").value,
+      role_key: document.getElementById("aRole").value,
+    });
+    if (error) { alert(error.message); return; }
+    alert("Rôle attribué.");
+  };
+
+  document.getElementById("quotaForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("quotas").insert({
+      grade_label: document.getElementById("qGrade").value,
+      description: document.getElementById("qDesc").value,
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset(); loadQuotas();
+  };
+})();
+</script>
+</body>
+</html>

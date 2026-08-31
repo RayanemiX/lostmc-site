@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Annonces Activité — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("annonces-activite", "Annonces Activité");
+
+  const canWrite = LostMCAuth.hasRole("annonceur") || LostMCAuth.isTable();
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    ${canWrite ? `
+    <div class="panel">
+      <div class="panel-title"><h2>Publier une annonce d'activité</h2></div>
+      <form id="form">
+        <label>Titre</label><input id="title" required>
+        <label>Contenu</label><textarea id="body" rows="3" required></textarea>
+        <label>Date de l'événement (optionnel)</label><input type="datetime-local" id="eventDate">
+        <div class="form-actions"><button class="btn-primary" type="submit">Publier</button></div>
+      </form>
+    </div>` : ""}
+    <div class="panel"><div class="panel-title"><h2>Annonces d'activité</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function load() {
+    const { data } = await sb.from("activity_announcements").select("*").order("created_at", { ascending: false });
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune annonce d'activité.</div>`; return; }
+    el.innerHTML = data.map(a => `
+      <div class="item-row">
+        <div>
+          <div class="t">${a.title}</div>
+          <div class="d" style="white-space:pre-wrap">${a.content}</div>
+          <div class="d">${a.event_date ? new Date(a.event_date).toLocaleString('fr-FR') + ' · ' : ''}${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+        ${canWrite ? `<button class="btn-sm btn-danger" data-id="${a.id}">Suppr.</button>` : ""}
+      </div>`).join("");
+    el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer cette annonce ?")) return;
+      await sb.from("activity_announcements").delete().eq("id", b.dataset.id);
+    });
+  }
+  load();
+
+  if (canWrite) {
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const { error } = await sb.from("activity_announcements").insert({
+        title: document.getElementById("title").value,
+        content: document.getElementById("body").value,
+        event_date: document.getElementById("eventDate").value || null,
+        author_id: LostMCAuth.profile.id,
+        author_name: LostMCAuth.profile.username,
+      });
+      if (error) { alert(error.message); return; }
+      e.target.reset();
+    };
+  }
+
+  sb.channel("act-realtime").on("postgres_changes", { event: "*", schema: "public", table: "activity_announcements" }, load).subscribe();
+})();
+</script>
+</body>
+</html>

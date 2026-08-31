@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hiérarchie — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("hierarchie", "Hiérarchie");
+  const isTable = LostMCAuth.isTable();
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    ${isTable ? `
+    <div class="panel">
+      <div class="panel-title"><h2>Ajouter un grade</h2></div>
+      <form id="form">
+        <div class="form-row">
+          <div><label>Grade</label><input id="grade" required></div>
+          <div><label>Ordre (0 = plus haut)</label><input id="order" type="number" value="0"></div>
+        </div>
+        <label>Nom du membre</label><input id="member">
+        <label>Devoirs / responsabilités</label><textarea id="duties" rows="3"></textarea>
+        <div class="form-actions"><button class="btn-primary" type="submit">Ajouter</button></div>
+      </form>
+    </div>` : ""}
+    <div class="panel"><div class="panel-title"><h2>Organigramme</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function load() {
+    const { data } = await sb.from("hierarchy").select("*").order("grade_order", { ascending: true });
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Hiérarchie non renseignée.</div>`; return; }
+    el.innerHTML = data.map(h => `
+      <div class="item-row">
+        <div>
+          <div class="t">${h.grade_label} — ${h.member_name || 'vacant'}</div>
+          <div class="d">${h.duties || ''}</div>
+        </div>
+        ${isTable ? `<button class="btn-sm btn-danger" data-id="${h.id}">Suppr.</button>` : ""}
+      </div>`).join("");
+    if (isTable) el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer ce grade ?")) return;
+      await sb.from("hierarchy").delete().eq("id", b.dataset.id);
+    });
+  }
+  load();
+
+  if (isTable) {
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const { error } = await sb.from("hierarchy").insert({
+        grade_label: document.getElementById("grade").value,
+        grade_order: parseInt(document.getElementById("order").value || "0"),
+        member_name: document.getElementById("member").value || null,
+        duties: document.getElementById("duties").value || null,
+      });
+      if (error) { alert(error.message); return; }
+      e.target.reset();
+    };
+  }
+
+  sb.channel("hierarchy-realtime").on("postgres_changes", { event: "*", schema: "public", table: "hierarchy" }, load).subscribe();
+})();
+</script>
+</body>
+</html>
