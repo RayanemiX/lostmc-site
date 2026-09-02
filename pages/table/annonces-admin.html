@@ -43,10 +43,13 @@
           <div class="d" style="white-space:pre-wrap">${a.content}</div>
           <div class="d">${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')}</div>
         </div>
-        <button class="btn-sm btn-danger" data-id="${a.id}">Suppr.</button>
+        <button class="btn-sm btn-danger" data-id="${a.id}" data-msgid="${a.discord_message_id || ''}">Suppr.</button>
       </div>`).join("");
     el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
       if (!confirm("Supprimer cette annonce ?")) return;
+      if (b.dataset.msgid) {
+        await sb.from("discord_delete_queue").insert({ discord_message_id: b.dataset.msgid });
+      }
       await sb.from("announcements").delete().eq("id", b.dataset.id);
     });
   }
