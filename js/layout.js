@@ -119,3 +119,57 @@ function LostMCLayout_render(activePage, pageTitle) {
 }
 
 window.LostMCLayout_render = LostMCLayout_render;
+
+// ============================================================
+// Fenêtre d'édition générique réutilisable sur toutes les pages
+// ============================================================
+function LostMC_editModal(title, fields, onSave) {
+  const existing = document.getElementById("editModalOverlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "editModalOverlay";
+
+  const fieldHtml = fields.map(f => {
+    const id = "edit_" + f.key;
+    if (f.type === "textarea") {
+      return `<label>${f.label}</label><textarea id="${id}" rows="${f.rows || 3}" ${f.required ? "required" : ""}>${f.value ?? ""}</textarea>`;
+    }
+    if (f.type === "checkbox") {
+      return `<label><input type="checkbox" id="${id}" style="width:auto; display:inline-block; margin-right:6px" ${f.value ? "checked" : ""}> ${f.label}</label>`;
+    }
+    return `<label>${f.label}</label><input type="${f.type || "text"}" id="${id}" value="${f.value ?? ""}" ${f.required ? "required" : ""} ${f.step ? `step="${f.step}"` : ""}>`;
+  }).join("");
+
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>${title}</h3>
+      <form id="editModalForm">
+        ${fieldHtml}
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Enregistrer</button>
+          <button type="button" id="editModalCancel">Annuler</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById("editModalCancel").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  document.getElementById("editModalForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const values = {};
+    fields.forEach(f => {
+      const el = document.getElementById("edit_" + f.key);
+      if (f.type === "checkbox") values[f.key] = el.checked;
+      else if (f.type === "number") values[f.key] = el.value === "" ? null : parseFloat(el.value);
+      else values[f.key] = el.value;
+    });
+    await onSave(values);
+    overlay.remove();
+  };
+}
+window.LostMC_editModal = LostMC_editModal;
