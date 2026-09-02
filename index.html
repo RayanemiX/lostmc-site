@@ -100,6 +100,7 @@
 
   loadAnnouncements(); loadActivity(); loadDuties(); loadQuotas();
 
+  // Realtime : rafraîchit dès qu'une annonce (site ou Discord) arrive
   sb.channel("home-realtime")
     .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, loadAnnouncements)
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_announcements" }, loadActivity)
