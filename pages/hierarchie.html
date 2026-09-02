@@ -47,8 +47,23 @@
           <div class="t">${h.grade_label} — ${h.member_name || 'vacant'}</div>
           <div class="d">${h.duties || ''}</div>
         </div>
-        ${isTable ? `<button class="btn-sm btn-danger" data-id="${h.id}">Suppr.</button>` : ""}
+        ${isTable ? `<div style="display:flex; gap:6px">
+          <button class="btn-sm" data-editid="${h.id}">Modifier</button>
+          <button class="btn-sm btn-danger" data-id="${h.id}">Suppr.</button>
+        </div>` : ""}
       </div>`).join("");
+    if (isTable) el.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = data.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier le grade", [
+        { key: "grade_label", label: "Grade", value: row.grade_label, required: true },
+        { key: "grade_order", label: "Ordre (0 = plus haut)", type: "number", value: row.grade_order },
+        { key: "member_name", label: "Nom du membre", value: row.member_name },
+        { key: "duties", label: "Devoirs / responsabilités", type: "textarea", rows: 3, value: row.duties },
+      ], async (values) => {
+        const { error } = await sb.from("hierarchy").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
     if (isTable) el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
       if (!confirm("Supprimer ce grade ?")) return;
       await sb.from("hierarchy").delete().eq("id", b.dataset.id);

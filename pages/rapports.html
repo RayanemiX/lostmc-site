@@ -45,7 +45,19 @@
           <div class="d" style="white-space:pre-wrap">${r.content}</div>
           <div class="d">${r.author_name || ''} · ${new Date(r.created_at).toLocaleString('fr-FR')}</div>
         </div>
+        ${(LostMCAuth.isTable() || r.author_id === LostMCAuth.profile.id) ? `<button class="btn-sm" data-editid="${r.id}">Modifier</button>` : ""}
       </div>`).join("");
+    el.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = data.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier le rapport", [
+        { key: "title", label: "Titre", value: row.title, required: true },
+        { key: "concerned_member", label: "Membre concerné", value: row.concerned_member },
+        { key: "content", label: "Contenu", type: "textarea", rows: 4, value: row.content, required: true },
+      ], async (values) => {
+        const { error } = await sb.from("reports").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
   }
   load();
 

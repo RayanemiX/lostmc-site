@@ -45,8 +45,22 @@
           <div class="d" style="white-space:pre-wrap">${a.content}</div>
           <div class="d">${a.event_date ? new Date(a.event_date).toLocaleString('fr-FR') + ' · ' : ''}${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')}</div>
         </div>
-        ${canWrite ? `<button class="btn-sm btn-danger" data-id="${a.id}">Suppr.</button>` : ""}
+        ${canWrite ? `<div style="display:flex; gap:6px">
+          <button class="btn-sm" data-editid="${a.id}">Modifier</button>
+          <button class="btn-sm btn-danger" data-id="${a.id}">Suppr.</button>
+        </div>` : ""}
       </div>`).join("");
+    el.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = data.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier l'annonce d'activité", [
+        { key: "title", label: "Titre", value: row.title, required: true },
+        { key: "content", label: "Contenu", type: "textarea", rows: 4, value: row.content, required: true },
+        { key: "event_date", label: "Date de l'événement", type: "datetime-local", value: row.event_date ? row.event_date.slice(0,16) : "" },
+      ], async (values) => {
+        const { error } = await sb.from("activity_announcements").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
     el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
       if (!confirm("Supprimer cette annonce ?")) return;
       await sb.from("activity_announcements").delete().eq("id", b.dataset.id);
