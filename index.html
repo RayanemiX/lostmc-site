@@ -1,111 +1,74 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Lost MC — Intranet</title>
-<link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion des annonces — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="app"></div>
-
-<script src="js/config.js"></script>
-<script src="js/supabase-client.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/layout.js"></script>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
 <script>
 (async () => {
-  const result = await LostMCAuth.guardPage();
+  const result = await LostMCAuth.guardPage(["table"]);
   if (!result) return;
-  LostMCLayout_render("home", "Accueil");
+  LostMCLayout_render("table-annonces", "Annonces — Gestion");
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="grid-2">
-      <div class="panel">
-        <div class="panel-title"><h2>Dernières actualités</h2><span class="meta" id="annCount"></span></div>
-        <div id="annList"><div class="empty">Chargement…</div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title"><h2>Dernière annonce activité</h2></div>
-        <div id="actList"><div class="empty">Chargement…</div></div>
-      </div>
-    </div>
-
-    <div class="grid-2">
-      <div class="panel">
-        <div class="panel-title"><h2>Devoirs de ton grade</h2></div>
-        <div id="dutiesBox"><div class="empty">Chargement…</div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title"><h2>Rappel des quotas</h2></div>
-        <div id="quotasBox"><div class="empty">Chargement…</div></div>
-      </div>
-    </div>
-
     <div class="panel">
-      <div class="panel-title"><h2>Radio Lost MC</h2></div>
-      <audio controls style="width:100%" id="radioPlayer">
-        <source src="" type="audio/mpeg">
-      </audio>
-      <p class="perm-note">Configure l'URL du flux radio dans js/config.js (clé RADIO_STREAM_URL) ou directement ici.</p>
+      <div class="panel-title"><h2>Nouvelle annonce</h2></div>
+      <form id="form">
+        <label>Titre</label><input id="title" required>
+        <label>Contenu</label><textarea id="body" rows="4" required></textarea>
+        <label><input type="checkbox" id="pinned" style="width:auto; display:inline-block; margin-right:6px"> Épingler</label>
+        <div class="form-actions"><button class="btn-primary" type="submit">Publier</button></div>
+      </form>
     </div>
+    <div class="panel"><div class="panel-title"><h2>Toutes les annonces</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
   `;
 
-  async function loadAnnouncements() {
-    const { data } = await sb.from("announcements").select("*").order("created_at", { ascending: false }).limit(6);
-    const el = document.getElementById("annList");
-    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune annonce pour le moment.</div>`; return; }
+  async function load() {
+    const { data } = await sb.from("announcements").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false });
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune annonce.</div>`; return; }
     el.innerHTML = data.map(a => `
       <div class="item-row">
         <div>
-          <div class="t">${a.title} ${a.pinned ? '<span class="tag pinned">Épinglé</span>' : ''}</div>
-          <div class="d">${a.content.slice(0,120)}${a.content.length>120?'…':''}</div>
-          <div class="d">${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')} · source: ${a.source}</div>
+          <div class="t">${a.title} ${a.pinned ? '<span class="tag pinned">Épinglé</span>' : ''} <span class="tag">${a.source}</span></div>
+          <div class="d" style="white-space:pre-wrap">${a.content}</div>
+          <div class="d">${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')}</div>
         </div>
+        <button class="btn-sm btn-danger" data-id="${a.id}" data-msgid="${a.discord_message_id || ''}">Suppr.</button>
       </div>`).join("");
-    document.getElementById("annCount").textContent = data.length + " récentes";
+    el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer cette annonce ?")) return;
+      if (b.dataset.msgid) {
+        await sb.from("discord_delete_queue").insert({ discord_message_id: b.dataset.msgid });
+      }
+      await sb.from("announcements").delete().eq("id", b.dataset.id);
+    });
   }
+  load();
 
-  async function loadActivity() {
-    const { data } = await sb.from("activity_announcements").select("*").order("created_at", { ascending: false }).limit(3);
-    const el = document.getElementById("actList");
-    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune annonce d'activité.</div>`; return; }
-    el.innerHTML = data.map(a => `
-      <div class="item-row">
-        <div>
-          <div class="t">${a.title}</div>
-          <div class="d">${a.content.slice(0,120)}${a.content.length>120?'…':''}</div>
-          <div class="d">${a.event_date ? new Date(a.event_date).toLocaleString('fr-FR') : ''}</div>
-        </div>
-      </div>`).join("");
-  }
+  document.getElementById("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("announcements").insert({
+      title: document.getElementById("title").value,
+      content: document.getElementById("body").value,
+      pinned: document.getElementById("pinned").checked,
+      source: "site",
+      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset();
+  };
 
-  async function loadDuties() {
-    const el = document.getElementById("dutiesBox");
-    const { data } = await sb.from("hierarchy").select("*").eq("profile_id", LostMCAuth.profile.id).maybeSingle();
-    if (!data) { el.innerHTML = `<div class="empty">Aucun grade renseigné pour toi dans la hiérarchie.</div>`; return; }
-    el.innerHTML = `<div class="t" style="margin-bottom:6px">${data.grade_label}</div><div class="d">${data.duties || "Aucun devoir renseigné."}</div>`;
-  }
-
-  async function loadQuotas() {
-    const el = document.getElementById("quotasBox");
-    const { data } = await sb.from("quotas").select("*").order("updated_at", { ascending: false });
-    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucun quota configuré.</div>`; return; }
-    el.innerHTML = data.map(q => `
-      <div class="item-row"><div><div class="t">${q.grade_label}</div><div class="d">${q.description}</div></div></div>
-    `).join("");
-  }
-
-  loadAnnouncements(); loadActivity(); loadDuties(); loadQuotas();
-
-  // Realtime : rafraîchit dès qu'une annonce (site ou Discord) arrive
-  sb.channel("home-realtime")
-    .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, loadAnnouncements)
-    .on("postgres_changes", { event: "*", schema: "public", table: "activity_announcements" }, loadActivity)
-    .on("postgres_changes", { event: "*", schema: "public", table: "quotas" }, loadQuotas)
-    .subscribe();
+  sb.channel("annadmin-realtime").on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, load).subscribe();
 })();
 </script>
 </body>
