@@ -43,8 +43,20 @@
           <div class="d" style="white-space:pre-wrap">${a.content}</div>
           <div class="d">${a.author_name || ''} · ${new Date(a.created_at).toLocaleString('fr-FR')}</div>
         </div>
+        <button class="btn-sm" data-editid="${a.id}" data-title="${a.title.replace(/"/g,'&quot;')}" data-pinned="${a.pinned}">Modifier</button>
         <button class="btn-sm btn-danger" data-id="${a.id}" data-msgid="${a.discord_message_id || ''}">Suppr.</button>
       </div>`).join("");
+    el.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = data.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier l'annonce", [
+        { key: "title", label: "Titre", value: row.title, required: true },
+        { key: "content", label: "Contenu", type: "textarea", rows: 4, value: row.content, required: true },
+        { key: "pinned", label: "Épingler", type: "checkbox", value: row.pinned },
+      ], async (values) => {
+        const { error } = await sb.from("announcements").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
     el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
       if (!confirm("Supprimer cette annonce ?")) return;
       if (b.dataset.msgid) {

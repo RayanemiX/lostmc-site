@@ -61,8 +61,20 @@
     if (!data || !data.length) { body.innerHTML = `<tr><td colspan="5" class="empty">Aucune arme enregistrée.</td></tr>`; }
     else body.innerHTML = data.map(w => `<tr>
       <td>${w.name}</td><td>${w.category || '—'}</td><td>${w.quantity}</td><td>${w.unit_price != null ? Number(w.unit_price).toLocaleString('fr-FR') : '—'}</td>
-      <td><button class="btn-sm btn-danger" data-id="${w.id}">Suppr.</button></td>
+      <td style="display:flex; gap:6px"><button class="btn-sm" data-editid="${w.id}">Modifier</button><button class="btn-sm btn-danger" data-id="${w.id}">Suppr.</button></td>
     </tr>`).join("");
+    body.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = data.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier l'arme", [
+        { key: "name", label: "Nom", value: row.name, required: true },
+        { key: "category", label: "Catégorie", value: row.category },
+        { key: "quantity", label: "Quantité (correction manuelle)", type: "number", value: row.quantity },
+        { key: "unit_price", label: "Prix unitaire", type: "number", step: "0.01", value: row.unit_price },
+      ], async (values) => {
+        const { error } = await sb.from("armory_weapons").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
     body.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
       if (!confirm("Supprimer cette arme du stock ?")) return;
       await sb.from("armory_weapons").delete().eq("id", b.dataset.id);
