@@ -52,6 +52,33 @@ const LostMCAuth = {
   isMember() { return this.hasRole("the_lost_mc"); },
   isTable() { return this.hasRole("table"); },
 
+  // Nom affiché partout sur le site : le "nom de code" choisi par le membre,
+  // ou son pseudo Discord tant qu'il n'en a pas encore défini un.
+  displayName() {
+    return this.profile?.codename || this.profile?.username || "Membre";
+  },
+
+  // Ouvre une fenêtre obligatoire pour choisir un nom de code si absent.
+  async ensureCodename() {
+    if (this.profile?.codename) return;
+    await new Promise((resolve) => {
+      LostMC_editModal("Choisis ton nom de code", [
+        { key: "codename", label: "Nom de code (visible sur le site)", required: true },
+        { key: "member_code", label: "Code membre / ID (optionnel)" },
+      ], async (values) => {
+        const { error } = await sb.from("profiles").update({
+          codename: values.codename,
+          member_code: values.member_code || null,
+        }).eq("id", this.profile.id);
+        if (!error) {
+          this.profile.codename = values.codename;
+          this.profile.member_code = values.member_code || null;
+        }
+        resolve();
+      }, { hideCancel: true, intro: "Ce nom sera affiché à la place de ton pseudo Discord partout sur le site." });
+    });
+  },
+
   // Protège une page : redirige vers login si pas connecté ou pas membre.
   // requiredRoles (optionnel) : tableau — il faut au moins un de ces rôles en plus d'être membre.
   async guardPage(requiredRoles = []) {
@@ -65,10 +92,11 @@ const LostMCAuth = {
       return null;
     }
     if (requiredRoles.length && !this.isTable() && !requiredRoles.some(r => this.hasRole(r))) {
-      document.getElementById("content").innerHTML =
+      document.getElementById("app").innerHTML =
         `<div class="access-denied"><h2>Accès refusé</h2><p>Cette section nécessite un rôle spécifique que tu ne possèdes pas.</p></div>`;
       return null;
     }
+    await this.ensureCodename();
     return result;
   },
 };
