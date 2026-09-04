@@ -60,7 +60,7 @@
     const { error } = await sb.from("table_requests").insert({
       title: document.getElementById("title").value,
       content: document.getElementById("body").value,
-      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
     });
     if (error) { alert(error.message); return; }
     e.target.reset();

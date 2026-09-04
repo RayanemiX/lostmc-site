@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mon Quota — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+function getMondayISO(d = new Date()) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(dt.setDate(diff));
+  monday.setHours(0,0,0,0);
+  return monday.toISOString().slice(0,10);
+}
+
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("quota", "Mon Quota");
+
+  const weekStart = getMondayISO();
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-title"><h2>Semaine du ${new Date(weekStart).toLocaleDateString('fr-FR')}</h2></div>
+      <div id="statusBox"><div class="empty">Chargement…</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><h2>Historique</h2></div>
+      <div id="historyBox"><div class="empty">Chargement…</div></div>
+    </div>
+  `;
+
+  async function loadCurrent() {
+    const { data: row } = await sb.from("quota_submissions")
+      .select("*").eq("profile_id", LostMCAuth.profile.id).eq("week_start", weekStart).maybeSingle();
+
+    const box = document.getElementById("statusBox");
+
+    if (!row) {
+      box.innerHTML = `
+        <p class="perm-note">Tu n'as pas encore déclaré ton quota de matériaux pour cette semaine.</p>
+        <form id="submitForm">
+          <label>Ce que tu as fourni (matériaux, quantités...)</label>
+          <textarea id="desc" rows="3" required></textarea>
+          <div class="form-actions"><button class="btn-primary" type="submit">Déclarer mon quota</button></div>
+        </form>
+      `;
+      document.getElementById("submitForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const { error } = await sb.from("quota_submissions").insert({
+          profile_id: LostMCAuth.profile.id,
+          week_start: weekStart,
+          materials_description: document.getElementById("desc").value,
+        });
+        if (error) alert(error.message);
+      };
+      return;
+    }
+
+    const statusTag = row.status === "valide"
+      ? `<span class="tag in">Validé</span>`
+      : row.status === "manquant"
+      ? `<span class="tag out">Manquant</span>`
+      : `<span class="tag">En attente de validation</span>`;
+
+    box.innerHTML = `
+      <div class="item-row">
+        <div>
+          <div class="t">${statusTag}</div>
+          <div class="d" style="white-space:pre-wrap">${row.materials_description || ''}</div>
+        </div>
+      </div>
+      ${row.status === "en_attente" ? `
+        <form id="editForm" style="margin-top:12px">
+          <label>Modifier ma déclaration</label>
+          <textarea id="descEdit" rows="3">${row.materials_description || ''}</textarea>
+          <div class="form-actions"><button class="btn-primary" type="submit">Mettre à jour</button></div>
+        </form>` : ""}
+    `;
+
+    if (row.status === "en_attente") {
+      document.getElementById("editForm").onsubmit = async (e) => {
+        e.preventDefault();
+        await sb.from("quota_submissions").update({
+          materials_description: document.getElementById("descEdit").value,
+        }).eq("id", row.id);
+      };
+    }
+  }
+
+  async function loadHistory() {
+    const { data } = await sb.from("quota_submissions")
+      .select("*").eq("profile_id", LostMCAuth.profile.id)
+      .neq("week_start", weekStart).order("week_start", { ascending: false }).limit(12);
+    const el = document.getElementById("historyBox");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucun historique.</div>`; return; }
+    el.innerHTML = data.map(r => `
+      <div class="item-row">
+        <div>
+          <div class="t">Semaine du ${new Date(r.week_start).toLocaleDateString('fr-FR')} ${r.status === 'valide' ? '<span class="tag in">Validé</span>' : r.status === 'manquant' ? '<span class="tag out">Manquant</span>' : '<span class="tag">En attente</span>'}</div>
+          <div class="d">${r.materials_description || ''}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  loadCurrent(); loadHistory();
+
+  sb.channel("quota-realtime").on("postgres_changes", { event: "*", schema: "public", table: "quota_submissions" }, () => { loadCurrent(); loadHistory(); }).subscribe();
+})();
+</script>
+</body>
+</html>

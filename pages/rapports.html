@@ -68,7 +68,7 @@
         title: document.getElementById("title").value,
         content: document.getElementById("body").value,
         concerned_member: document.getElementById("concerned").value || null,
-        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
       });
       if (error) { alert(error.message); return; }
       e.target.reset();

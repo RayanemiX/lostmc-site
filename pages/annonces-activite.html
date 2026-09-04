@@ -76,7 +76,7 @@
         content: document.getElementById("body").value,
         event_date: document.getElementById("eventDate").value || null,
         author_id: LostMCAuth.profile.id,
-        author_name: LostMCAuth.profile.username,
+        author_name: LostMCAuth.displayName(),
       });
       if (error) { alert(error.message); return; }
       e.target.reset();

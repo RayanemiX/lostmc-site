@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trésorerie — The Lost MC</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../js/config.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage();
+  if (!result) return;
+  LostMCLayout_render("tresorerie", "Trésorerie");
+  const isTable = LostMCAuth.isTable();
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    ${isTable ? `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title"><h2>Nouvelle ressource</h2></div>
+        <p class="perm-note">Matériau, drogue, ou toute autre ressource (ex: Minerai d'or, Cocaïne, Meth...).</p>
+        <form id="newItemForm">
+          <label>Nom</label><input id="itemName" required>
+          <label>Unité</label><input id="itemUnit" value="unité">
+          <div class="form-actions"><button class="btn-primary" type="submit">Créer la ressource</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-title"><h2>Mouvement</h2></div>
+        <form id="txForm">
+          <label>Ressource</label><select id="txItem"></select>
+          <div class="form-row">
+            <div><label>Type</label><select id="txType"><option value="entree">Entrée</option><option value="sortie">Sortie</option></select></div>
+            <div><label>Quantité</label><input id="txQty" type="number" min="0.01" step="0.01" required></div>
+          </div>
+          <label>Note</label><input id="txNote">
+          <div class="form-actions"><button class="btn-primary" type="submit">Enregistrer</button></div>
+        </form>
+      </div>
+    </div>` : ""}
+
+    <div class="panel">
+      <div class="panel-title"><h2>Stock actuel</h2></div>
+      <table><thead><tr><th>Ressource</th><th>Quantité</th><th>Unité</th>${isTable ? '<th></th>' : ''}</tr></thead><tbody id="stockBody"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody></table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Derniers mouvements</h2></div>
+      <div id="txList"><div class="empty">Chargement…</div></div>
+    </div>
+  `;
+
+  let itemsCache = [];
+
+  async function loadItems() {
+    const { data } = await sb.from("treasury_items").select("*").order("name");
+    itemsCache = data || [];
+    const stockBody = document.getElementById("stockBody");
+    if (!itemsCache.length) { stockBody.innerHTML = `<tr><td colspan="4" class="empty">Aucune ressource.</td></tr>`; }
+    else stockBody.innerHTML = itemsCache.map(i => `<tr><td>${i.name}</td><td>${i.quantity}</td><td>${i.unit}</td>${isTable ? `<td><button class="btn-sm" data-editid="${i.id}">Modifier</button></td>` : ''}</tr>`).join("");
+
+    if (isTable) stockBody.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
+      const row = itemsCache.find(x => x.id === b.dataset.editid);
+      LostMC_editModal("Modifier la ressource", [
+        { key: "name", label: "Nom", value: row.name, required: true },
+        { key: "unit", label: "Unité", value: row.unit },
+        { key: "quantity", label: "Quantité (correction manuelle)", type: "number", step: "0.01", value: row.quantity },
+      ], async (values) => {
+        const { error } = await sb.from("treasury_items").update(values).eq("id", row.id);
+        if (error) alert(error.message);
+      });
+    });
+
+    const sel = document.getElementById("txItem");
+    if (sel) sel.innerHTML = itemsCache.map(i => `<option value="${i.id}">${i.name}</option>`).join("");
+  }
+
+  async function loadTx() {
+    const { data } = await sb.from("treasury_transactions").select("*, treasury_items(name,unit)").order("created_at", { ascending: false }).limit(20);
+    const el = document.getElementById("txList");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucun mouvement.</div>`; return; }
+    el.innerHTML = data.map(t => `
+      <div class="item-row">
+        <div>
+          <div class="t">${t.treasury_items?.name || '—'} <span class="tag ${t.type==='entree'?'in':'out'}">${t.type==='entree'?'Entrée':'Sortie'}</span></div>
+          <div class="d">${t.quantity} ${t.treasury_items?.unit || ''} · ${t.note || ''}</div>
+          <div class="d">${t.author_name || ''} · ${new Date(t.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  loadItems(); loadTx();
+
+  if (isTable) {
+    document.getElementById("newItemForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const { error } = await sb.from("treasury_items").insert({
+        name: document.getElementById("itemName").value,
+        unit: document.getElementById("itemUnit").value || "unité",
+        created_by: LostMCAuth.profile.id,
+      });
+      if (error) { alert(error.message); return; }
+      e.target.reset(); loadItems();
+    };
+
+    document.getElementById("txForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const itemId = document.getElementById("txItem").value;
+      if (!itemId) { alert("Crée d'abord une ressource."); return; }
+      const type = document.getElementById("txType").value;
+      const qty = parseFloat(document.getElementById("txQty").value);
+
+      const { error: txErr } = await sb.from("treasury_transactions").insert({
+        item_id: itemId, type, quantity: qty,
+        note: document.getElementById("txNote").value || null,
+        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
+      });
+      if (txErr) { alert(txErr.message); return; }
+
+      const item = itemsCache.find(i => i.id === itemId);
+      const newQty = (item?.quantity || 0) + (type === "entree" ? qty : -qty);
+      await sb.from("treasury_items").update({ quantity: newQty }).eq("id", itemId);
+
+      e.target.reset(); loadItems(); loadTx();
+    };
+  }
+
+  sb.channel("treasury-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "treasury_items" }, loadItems)
+    .on("postgres_changes", { event: "*", schema: "public", table: "treasury_transactions" }, loadTx)
+    .subscribe();
+})();
+</script>
+</body>
+</html>
