@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi Quotas — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
+<script>
+function getMondayISO(d = new Date()) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(dt.setDate(diff));
+  monday.setHours(0,0,0,0);
+  return monday.toISOString().slice(0,10);
+}
+
+(async () => {
+  const result = await LostMCAuth.guardPage(["table"]);
+  if (!result) return;
+  LostMCLayout_render("table-quotas", "Suivi Quotas");
+
+  const weekStart = getMondayISO();
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-title"><h2>Semaine du ${new Date(weekStart).toLocaleDateString('fr-FR')}</h2><span class="meta" id="summary"></span></div>
+      <table>
+        <thead><tr><th>Membre</th><th>Déclaration</th><th>Statut</th><th></th></tr></thead>
+        <tbody id="body"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  async function ensureMemberFile(profile) {
+    let { data: file } = await sb.from("member_files").select("*").eq("profile_id", profile.id).maybeSingle();
+    if (!file) {
+      const { data: created } = await sb.from("member_files").insert({
+        profile_id: profile.id,
+        member_name: profile.codename || profile.username,
+        codename: profile.codename,
+        member_code: profile.member_code,
+        created_by: LostMCAuth.profile.id,
+      }).select().single();
+      file = created;
+    }
+    return file;
+  }
+
+  async function load() {
+    const { data: profiles } = await sb.from("profiles").select("*").order("codename");
+    const { data: subs } = await sb.from("quota_submissions").select("*").eq("week_start", weekStart);
+
+    const body = document.getElementById("body");
+    if (!profiles || !profiles.length) { body.innerHTML = `<tr><td colspan="4" class="empty">Aucun membre.</td></tr>`; return; }
+
+    let validCount = 0, missingCount = 0, pendingCount = 0;
+
+    body.innerHTML = profiles.map(p => {
+      const sub = (subs || []).find(s => s.profile_id === p.id);
+      const status = sub?.status || "aucune";
+      if (status === "valide") validCount++;
+      else if (status === "manquant") missingCount++;
+      else pendingCount++;
+
+      const statusTag = status === "valide" ? '<span class="tag in">Validé</span>'
+        : status === "manquant" ? '<span class="tag out">Manquant</span>'
+        : status === "en_attente" ? '<span class="tag">En attente</span>'
+        : '<span class="tag out">Aucune déclaration</span>';
+
+      return `<tr>
+        <td>${p.codename || p.username}</td>
+        <td>${sub?.materials_description || '<span class="empty">—</span>'}</td>
+        <td>${statusTag}</td>
+        <td style="display:flex; gap:6px">
+          ${sub && sub.status !== 'valide' ? `<button class="btn-sm" data-valid="${sub.id}">Valider</button>` : ''}
+          ${status !== 'manquant' ? `<button class="btn-sm btn-danger" data-missing="${p.id}" data-subid="${sub?.id || ''}">Marquer manquant</button>` : ''}
+          ${sub ? `<button class="btn-sm btn-danger" data-del="${sub.id}">Suppr.</button>` : ''}
+        </td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("summary").textContent = `${validCount} validés · ${missingCount} manquants · ${pendingCount} en attente/aucune`;
+
+    body.querySelectorAll("button[data-valid]").forEach(b => b.onclick = async () => {
+      await sb.from("quota_submissions").update({
+        status: "valide", validated_by: LostMCAuth.profile.id, validated_at: new Date().toISOString(),
+      }).eq("id", b.dataset.valid);
+    });
+
+    body.querySelectorAll("button[data-del]").forEach(b => b.onclick = async () => {
+      if (!confirm("Supprimer cette déclaration ?")) return;
+      await sb.from("quota_submissions").delete().eq("id", b.dataset.del);
+    });
+
+    body.querySelectorAll("button[data-missing]").forEach(b => b.onclick = async () => {
+      const profile = profiles.find(p => p.id === b.dataset.missing);
+      if (!confirm(`Marquer le quota de ${profile.codename || profile.username} comme manquant ? Une entrée sera ajoutée à son dossier membre.`)) return;
+
+      if (b.dataset.subid) {
+        await sb.from("quota_submissions").update({
+          status: "manquant", validated_by: LostMCAuth.profile.id, validated_at: new Date().toISOString(),
+        }).eq("id", b.dataset.subid);
+      } else {
+        await sb.from("quota_submissions").insert({
+          profile_id: profile.id, week_start: weekStart, status: "manquant",
+          validated_by: LostMCAuth.profile.id, validated_at: new Date().toISOString(),
+        });
+      }
+
+      const file = await ensureMemberFile(profile);
+      await sb.from("member_file_entries").insert({
+        file_id: file.id,
+        entry_type: "sanction",
+        content: `Quota de matériaux non fourni pour la semaine du ${new Date(weekStart).toLocaleDateString('fr-FR')}.`,
+        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
+      });
+    });
+  }
+  load();
+
+  sb.channel("table-quota-realtime").on("postgres_changes", { event: "*", schema: "public", table: "quota_submissions" }, load).subscribe();
+})();
+</script>
+</body>
+</html>

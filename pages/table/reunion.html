@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demander une réunion — The Lost MC</title>
+<link rel="stylesheet" href="../../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="../../js/config.js"></script>
+<script src="../../js/supabase-client.js"></script>
+<script src="../../js/auth.js"></script>
+<script src="../../js/layout.js"></script>
+<script>
+(async () => {
+  const result = await LostMCAuth.guardPage(["table"]);
+  if (!result) return;
+  LostMCLayout_render("reunion", "Demander une réunion");
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-title"><h2>Nouvelle demande de réunion</h2></div>
+      <p class="perm-note">Un message sera automatiquement envoyé dans le salon Discord dédié aux réunions.</p>
+      <form id="form">
+        <label>Motif / ordre du jour</label>
+        <textarea id="reason" rows="4" required></textarea>
+        <label>Date/heure proposée (optionnel)</label>
+        <input type="datetime-local" id="proposedTime">
+        <div class="form-actions"><button class="btn-primary" type="submit">Envoyer la demande</button></div>
+      </form>
+    </div>
+    <div class="panel"><div class="panel-title"><h2>Historique des demandes</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
+  `;
+
+  async function load() {
+    const { data } = await sb.from("meeting_requests").select("*").order("created_at", { ascending: false }).limit(20);
+    const el = document.getElementById("list");
+    if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune demande envoyée.</div>`; return; }
+    el.innerHTML = data.map(r => `
+      <div class="item-row">
+        <div>
+          <div class="t">${r.reason}</div>
+          <div class="d">${r.proposed_time ? new Date(r.proposed_time).toLocaleString('fr-FR') + ' · ' : ''}${r.requester_name || ''} · ${new Date(r.created_at).toLocaleString('fr-FR')}</div>
+        </div>
+      </div>`).join("");
+  }
+  load();
+
+  document.getElementById("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from("meeting_requests").insert({
+      reason: document.getElementById("reason").value,
+      proposed_time: document.getElementById("proposedTime").value || null,
+      requested_by: LostMCAuth.profile.id,
+      requester_name: LostMCAuth.displayName(),
+    });
+    if (error) { alert(error.message); return; }
+    e.target.reset();
+    alert("Demande envoyée, elle va apparaître sur Discord dans quelques secondes.");
+  };
+
+  sb.channel("meeting-realtime").on("postgres_changes", { event: "INSERT", schema: "public", table: "meeting_requests" }, load).subscribe();
+})();
+</script>
+</body>
+</html>

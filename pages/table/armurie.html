@@ -125,7 +125,7 @@
     const { error: txErr } = await sb.from("armory_transactions").insert({
       weapon_id: weaponId, type, quantity: qty, amount,
       note: document.getElementById("txNote").value || null,
-      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.profile.username,
+      author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
     });
     if (txErr) { alert(txErr.message); return; }
 
