@@ -14,14 +14,17 @@ function LostMCLayout_render(activePage, pageTitle) {
     { key: "hierarchie", label: "Hiérarchie", href: "pages/hierarchie.html" },
     { key: "rapports", label: "Rapports", href: "pages/rapports.html" },
     { key: "cartographie", label: "Cartographie", href: "pages/cartographie.html" },
+    { key: "quota", label: "Mon Quota", href: "pages/quota.html" },
     { key: "demande-table", label: "Demande Table", href: "pages/demande-table.html" },
+    { key: "tresorerie", label: "Trésorerie", href: "pages/tresorerie.html" },
   ];
 
   const tableLinks = [
     { key: "table-annonces", label: "Annonces (gestion)", href: "pages/table/annonces-admin.html" },
     { key: "membres", label: "Liste des membres", href: "pages/table/membres.html" },
     { key: "dossier-membre", label: "Dossier membre", href: "pages/table/dossier-membre.html" },
-    { key: "banque", label: "Banque du MC", href: "pages/table/banque.html" },
+    { key: "table-quotas", label: "Suivi Quotas", href: "pages/table/quotas.html" },
+    { key: "reunion", label: "Demander une réunion", href: "pages/table/reunion.html" },
     { key: "armurie", label: "Armurie", href: "pages/table/armurie.html" },
     { key: "parametres", label: "Paramètres", href: "pages/table/parametres.html" },
   ];
