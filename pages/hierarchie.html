@@ -17,75 +17,35 @@
   const result = await LostMCAuth.guardPage();
   if (!result) return;
   LostMCLayout_render("hierarchie", "Hiérarchie");
-  const isTable = LostMCAuth.isTable();
 
   const content = document.getElementById("content");
-  content.innerHTML = `
-    ${isTable ? `
-    <div class="panel">
-      <div class="panel-title"><h2>Ajouter un grade</h2></div>
-      <form id="form">
-        <div class="form-row">
-          <div><label>Grade</label><input id="grade" required></div>
-          <div><label>Ordre (0 = plus haut)</label><input id="order" type="number" value="0"></div>
-        </div>
-        <label>Nom du membre</label><input id="member">
-        <label>Devoirs / responsabilités</label><textarea id="duties" rows="3"></textarea>
-        <div class="form-actions"><button class="btn-primary" type="submit">Ajouter</button></div>
-      </form>
-    </div>` : ""}
-    <div class="panel"><div class="panel-title"><h2>Organigramme</h2></div><div id="list"><div class="empty">Chargement…</div></div></div>
-  `;
+  content.innerHTML = `<div class="panel"><div class="panel-title"><h2>Organigramme</h2><span class="meta">Synchronisé automatiquement depuis Discord</span></div><div id="list"><div class="empty">Chargement…</div></div></div>`;
 
   async function load() {
-    const { data } = await sb.from("hierarchy").select("*").order("grade_order", { ascending: true });
+    const [{ data: grades }, { data: profiles }] = await Promise.all([
+      sb.from("role_definitions").select("*").eq("is_hierarchy", true).order("grade_order"),
+      sb.from("profiles").select("*"),
+    ]);
     const el = document.getElementById("list");
-    if (!data || !data.length) { el.innerHTML = `<div class="empty">Hiérarchie non renseignée.</div>`; return; }
-    el.innerHTML = data.map(h => `
-      <div class="item-row">
-        <div>
-          <div class="t">${h.grade_label} — ${h.member_name || 'vacant'}</div>
-          <div class="d">${h.duties || ''}</div>
-        </div>
-        ${isTable ? `<div style="display:flex; gap:6px">
-          <button class="btn-sm" data-editid="${h.id}">Modifier</button>
-          <button class="btn-sm btn-danger" data-id="${h.id}">Suppr.</button>
-        </div>` : ""}
-      </div>`).join("");
-    if (isTable) el.querySelectorAll("button[data-editid]").forEach(b => b.onclick = () => {
-      const row = data.find(x => x.id === b.dataset.editid);
-      LostMC_editModal("Modifier le grade", [
-        { key: "grade_label", label: "Grade", value: row.grade_label, required: true },
-        { key: "grade_order", label: "Ordre (0 = plus haut)", type: "number", value: row.grade_order },
-        { key: "member_name", label: "Nom du membre", value: row.member_name },
-        { key: "duties", label: "Devoirs / responsabilités", type: "textarea", rows: 3, value: row.duties },
-      ], async (values) => {
-        const { error } = await sb.from("hierarchy").update(values).eq("id", row.id);
-        if (error) alert(error.message);
-      });
-    });
-    if (isTable) el.querySelectorAll("button[data-id]").forEach(b => b.onclick = async () => {
-      if (!confirm("Supprimer ce grade ?")) return;
-      await sb.from("hierarchy").delete().eq("id", b.dataset.id);
-    });
+    if (!grades || !grades.length) { el.innerHTML = `<div class="empty">Aucun grade configuré.</div>`; return; }
+
+    el.innerHTML = grades.map(g => {
+      const members = (profiles || []).filter(p => p.hierarchy_grade_key === g.key);
+      return `
+        <div class="item-row">
+          <div style="width:100%">
+            <div class="t" style="color:${g.color}">${g.label}${members.length ? ` — ${members.map(m => m.codename || m.username).join(', ')}` : ' — <span class="empty">vacant</span>'}</div>
+            <div class="d">${g.duties || ''}</div>
+          </div>
+        </div>`;
+    }).join("");
   }
   load();
 
-  if (isTable) {
-    document.getElementById("form").onsubmit = async (e) => {
-      e.preventDefault();
-      const { error } = await sb.from("hierarchy").insert({
-        grade_label: document.getElementById("grade").value,
-        grade_order: parseInt(document.getElementById("order").value || "0"),
-        member_name: document.getElementById("member").value || null,
-        duties: document.getElementById("duties").value || null,
-      });
-      if (error) { alert(error.message); return; }
-      e.target.reset();
-    };
-  }
-
-  sb.channel("hierarchy-realtime").on("postgres_changes", { event: "*", schema: "public", table: "hierarchy" }, load).subscribe();
+  sb.channel("hierarchy-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
+    .on("postgres_changes", { event: "*", schema: "public", table: "role_definitions" }, load)
+    .subscribe();
 })();
 </script>
 </body>
