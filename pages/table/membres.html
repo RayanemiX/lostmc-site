@@ -19,26 +19,72 @@
   LostMCLayout_render("membres", "Liste des membres");
 
   const content = document.getElementById("content");
-  content.innerHTML = `<div class="panel"><div class="panel-title"><h2>Membres</h2><span class="meta" id="count"></span></div>
-    <table><thead><tr><th>Nom de code</th><th>Pseudo Discord</th><th>Discord ID</th><th>Rôles</th><th>Fiche</th></tr></thead><tbody id="body"><tr><td colspan="5" class="empty">Chargement…</td></tr></tbody></table></div>`;
+  content.innerHTML = `<div class="panel">
+    <div class="panel-title"><h2>Membres</h2><span class="meta" id="count"></span></div>
+    <div style="overflow-x:auto">
+    <table><thead><tr>
+      <th>ID</th><th>Surnom</th><th>Date grade</th><th>Grade</th><th>Grade potentiel</th><th>Note</th><th>Absences</th><th></th>
+    </tr></thead><tbody id="body"><tr><td colspan="8" class="empty">Chargement…</td></tr></tbody></table>
+    </div>
+  </div>`;
+
+  let grades = [];
+  let profiles = [];
+  let absenceCounts = {};
+
+  function gradeOption(key, selectedKey) {
+    const g = grades.find(x => x.key === key);
+    return `<option value="${key}" ${key === selectedKey ? "selected" : ""}>${g ? g.label : key}</option>`;
+  }
 
   async function load() {
-    const { data: profiles } = await sb.from("profiles").select("*").order("username");
-    const { data: roles } = await sb.from("member_roles").select("*");
+    const [{ data: gradesData }, { data: profilesData }, { data: absencesData }] = await Promise.all([
+      sb.from("role_definitions").select("*").eq("is_hierarchy", true).order("grade_order"),
+      sb.from("profiles").select("*").order("codename"),
+      sb.from("absences").select("profile_id"),
+    ]);
+    grades = gradesData || [];
+    profiles = profilesData || [];
+    absenceCounts = {};
+    (absencesData || []).forEach(a => { absenceCounts[a.profile_id] = (absenceCounts[a.profile_id] || 0) + 1; });
+
     const body = document.getElementById("body");
-    if (!profiles || !profiles.length) { body.innerHTML = `<tr><td colspan="5" class="empty">Aucun membre synchronisé pour l'instant.</td></tr>`; return; }
+    if (!profiles.length) { body.innerHTML = `<tr><td colspan="8" class="empty">Aucun membre synchronisé.</td></tr>`; return; }
     document.getElementById("count").textContent = profiles.length + " membres";
-    body.innerHTML = profiles.map(p => {
-      const r = (roles || []).filter(x => x.profile_id === p.id).map(x => `<span class="tag">${x.role_key}</span>`).join(" ");
-      return `<tr><td>${p.codename || '<span class="empty">non défini</span>'}</td><td>${p.username}</td><td>${p.discord_id}</td><td>${r || '<span class="empty">aucun</span>'}</td>
-        <td><a href="dossier-membre.html?profile=${p.id}&name=${encodeURIComponent(p.codename || p.username)}">Voir dossier</a></td></tr>`;
-    }).join("");
+
+    const gradeOptionsHtml = (selected) => `<option value="">—</option>` + grades.map(g => `<option value="${g.key}" ${g.key===selected?"selected":""} style="color:${g.color}">${g.label}</option>`).join("");
+
+    body.innerHTML = profiles.map(p => `
+      <tr>
+        <td>${p.member_code || '—'}</td>
+        <td style="cursor:pointer; text-decoration:underline" data-open="${p.id}">${p.codename || p.username}</td>
+        <td>${p.new_grade_date ? new Date(p.new_grade_date).toLocaleDateString('fr-FR') : '—'}</td>
+        <td><select data-grade="${p.id}" style="border-color:${grades.find(g=>g.key===p.hierarchy_grade_key)?.color || 'var(--line-strong)'}">${gradeOptionsHtml(p.hierarchy_grade_key)}</select></td>
+        <td><select data-potential="${p.id}">${gradeOptionsHtml(p.potential_grade_key)}</select></td>
+        <td><input data-note="${p.id}" value="${(p.table_note || '').replace(/"/g,'&quot;')}" style="min-width:140px"></td>
+        <td>${absenceCounts[p.id] || 0}</td>
+        <td><a href="dossier-membre.html?profile=${p.id}&name=${encodeURIComponent(p.codename || p.username)}">Fiche</a></td>
+      </tr>`).join("");
+
+    body.querySelectorAll("[data-open]").forEach(el => el.onclick = () => {
+      const p = profiles.find(x => x.id === el.dataset.open);
+      LostMC_openDossierModal(p);
+    });
+    body.querySelectorAll("select[data-grade]").forEach(el => el.onchange = async () => {
+      await sb.from("profiles").update({ hierarchy_grade_key: el.value || null, new_grade_date: new Date().toISOString().slice(0,10) }).eq("id", el.dataset.grade);
+    });
+    body.querySelectorAll("select[data-potential]").forEach(el => el.onchange = async () => {
+      await sb.from("profiles").update({ potential_grade_key: el.value || null }).eq("id", el.dataset.potential);
+    });
+    body.querySelectorAll("input[data-note]").forEach(el => el.onblur = async () => {
+      await sb.from("profiles").update({ table_note: el.value || null }).eq("id", el.dataset.note);
+    });
   }
   load();
 
   sb.channel("membres-realtime")
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
-    .on("postgres_changes", { event: "*", schema: "public", table: "member_roles" }, load)
+    .on("postgres_changes", { event: "*", schema: "public", table: "role_definitions" }, load)
     .subscribe();
 })();
 </script>

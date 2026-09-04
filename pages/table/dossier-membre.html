@@ -24,13 +24,12 @@
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="panel">
-      <div class="panel-title"><h2>Rechercher / ouvrir un dossier</h2></div>
+      <div class="panel-title"><h2>Rechercher un dossier</h2></div>
       <form id="searchForm">
         <label>Membre</label><select id="memberSelect" required></select>
         <div class="form-actions"><button class="btn-primary" type="submit">Ouvrir le dossier</button></div>
       </form>
     </div>
-    <div id="fileArea"></div>
   `;
 
   const { data: profiles } = await sb.from("profiles").select("*").order("codename");
@@ -38,91 +37,16 @@
   sel.innerHTML = (profiles || []).map(p => `<option value="${p.id}">${p.codename || p.username}${p.member_code ? ' #' + p.member_code : ''}</option>`).join("");
   if (presetProfileId) sel.value = presetProfileId;
 
-  let currentFileId = null;
-
-  async function openFile(profileId) {
-    const profile = (profiles || []).find(p => p.id === profileId);
-    if (!profile) return;
-
-    let { data: file } = await sb.from("member_files").select("*").eq("profile_id", profileId).maybeSingle();
-    if (!file) {
-      const { data: created, error } = await sb.from("member_files").insert({
-        profile_id: profileId,
-        member_name: profile.codename || profile.username,
-        codename: profile.codename,
-        member_code: profile.member_code,
-        created_by: LostMCAuth.profile.id,
-      }).select().single();
-      if (error) { alert(error.message); return; }
-      file = created;
-    } else if (file.codename !== profile.codename || file.member_code !== profile.member_code) {
-      // garde la fiche synchronisée si le membre a changé son nom de code depuis
-      await sb.from("member_files").update({ codename: profile.codename, member_code: profile.member_code }).eq("id", file.id);
-      file.codename = profile.codename; file.member_code = profile.member_code;
-    }
-    currentFileId = file.id;
-    renderFile(file, profile);
-  }
-
-  async function renderFile(file, profile) {
-    const area = document.getElementById("fileArea");
-    area.innerHTML = `
-      <div class="panel">
-        <div class="panel-title">
-          <h2>Dossier de ${profile.codename || profile.username}</h2>
-          ${profile.member_code ? `<span class="meta">ID: ${profile.member_code}</span>` : ''}
-        </div>
-        <div class="d" style="margin-bottom:10px">Pseudo Discord : ${profile.username}</div>
-        <form id="entryForm">
-          <div class="form-row">
-            <div><label>Type</label><select id="entryType">
-              <option value="note">Note</option>
-              <option value="avertissement">Avertissement</option>
-              <option value="sanction">Sanction</option>
-              <option value="felicitation">Félicitation</option>
-            </select></div>
-          </div>
-          <label>Détail</label><textarea id="entryContent" rows="3" required></textarea>
-          <div class="form-actions"><button class="btn-primary" type="submit">Ajouter à la fiche</button></div>
-        </form>
-      </div>
-      <div class="panel"><div class="panel-title"><h2>Historique</h2></div><div id="entries"><div class="empty">Chargement…</div></div></div>
-    `;
-
-    async function loadEntries() {
-      const { data } = await sb.from("member_file_entries").select("*").eq("file_id", currentFileId).order("created_at", { ascending: false });
-      const el = document.getElementById("entries");
-      if (!data || !data.length) { el.innerHTML = `<div class="empty">Aucune entrée.</div>`; return; }
-      el.innerHTML = data.map(e => `
-        <div class="item-row">
-          <div>
-            <div class="t"><span class="tag">${e.entry_type}</span></div>
-            <div class="d" style="white-space:pre-wrap">${e.content}</div>
-            <div class="d">${e.author_name || ''} · ${new Date(e.created_at).toLocaleString('fr-FR')}</div>
-          </div>
-        </div>`).join("");
-    }
-    loadEntries();
-
-    document.getElementById("entryForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const { error } = await sb.from("member_file_entries").insert({
-        file_id: currentFileId,
-        entry_type: document.getElementById("entryType").value,
-        content: document.getElementById("entryContent").value,
-        author_id: LostMCAuth.profile.id, author_name: LostMCAuth.displayName(),
-      });
-      if (error) { alert(error.message); return; }
-      e.target.reset(); loadEntries();
-    };
-  }
-
   document.getElementById("searchForm").onsubmit = (e) => {
     e.preventDefault();
-    openFile(sel.value);
+    const p = profiles.find(x => x.id === sel.value);
+    if (p) LostMC_openDossierModal(p);
   };
 
-  if (presetProfileId) openFile(presetProfileId);
+  if (presetProfileId) {
+    const p = profiles.find(x => x.id === presetProfileId);
+    if (p) LostMC_openDossierModal(p);
+  }
 })();
 </script>
 </body>
