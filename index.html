@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Lost MC — Intranet</title>
+<link rel="icon" type="image/jpeg" href="assets/logo.jpg">
 <link rel="stylesheet" href="css/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -47,11 +48,18 @@
     <div class="panel">
       <div class="panel-title"><h2>Radio Lost MC</h2></div>
       <audio controls style="width:100%" id="radioPlayer">
-        <source src="" type="audio/mpeg">
+        <source id="radioSource" src="" type="audio/mpeg">
       </audio>
-      <p class="perm-note">La radio Lost pour du 100% rock 24h/24h 7j/7j.</p>
+      <p class="perm-note" id="radioNote">Configure l'URL du flux radio dans js/config.js (clé RADIO_STREAM_URL).</p>
     </div>
   `;
+
+  const radioUrl = window.LOSTMC_CONFIG.RADIO_STREAM_URL;
+  if (radioUrl) {
+    document.getElementById("radioSource").src = radioUrl;
+    document.getElementById("radioPlayer").load();
+    document.getElementById("radioNote").style.display = "none";
+  }
 
   async function loadAnnouncements() {
     const { data } = await sb.from("announcements").select("*").order("created_at", { ascending: false }).limit(6);
@@ -100,7 +108,6 @@
 
   loadAnnouncements(); loadActivity(); loadDuties(); loadQuotas();
 
-  // Realtime : rafraîchit dès qu'une annonce (site ou Discord) arrive
   sb.channel("home-realtime")
     .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, loadAnnouncements)
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_announcements" }, loadActivity)
