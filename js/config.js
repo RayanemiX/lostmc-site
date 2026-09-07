@@ -9,5 +9,5 @@ window.LOSTMC_CONFIG = {
   // Doit correspondre EXACTEMENT à l'URL de ton site GitHub Pages
   // ex: "https://tonpseudo.github.io/lostmc-site/"
   SITE_URL: "https://rayanemix.github.io/lostmc-site/",
-  RADIO_STREAM_URL: "https://icecast.radiofrance.fr/fiprock-midfi.mp3",
+  RADIO_STREAM_URL: "https://icecast.radiofrance.fr/fiprock-midfi.mp3?id=radiofrance",
 };
