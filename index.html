@@ -92,9 +92,11 @@
 
   async function loadDuties() {
     const el = document.getElementById("dutiesBox");
-    const { data } = await sb.from("hierarchy").select("*").eq("profile_id", LostMCAuth.profile.id).maybeSingle();
-    if (!data) { el.innerHTML = `<div class="empty">Aucun grade renseigné pour toi dans la hiérarchie.</div>`; return; }
-    el.innerHTML = `<div class="t" style="margin-bottom:6px">${data.grade_label}</div><div class="d">${data.duties || "Aucun devoir renseigné."}</div>`;
+    const gradeKey = LostMCAuth.profile.hierarchy_grade_key;
+    if (!gradeKey) { el.innerHTML = `<div class="empty">Aucun grade hiérarchique renseigné pour toi (vérifie tes rôles Discord).</div>`; return; }
+    const { data } = await sb.from("role_definitions").select("*").eq("key", gradeKey).maybeSingle();
+    if (!data) { el.innerHTML = `<div class="empty">Grade introuvable.</div>`; return; }
+    el.innerHTML = `<div class="t" style="margin-bottom:6px; color:${data.color}">${data.label}</div><div class="d">${data.duties || "Aucun devoir renseigné."}</div>`;
   }
 
   async function loadQuotas() {
